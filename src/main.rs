@@ -34,6 +34,12 @@ impl<'de> Visitor<'de> for PlayerStateVisitor {
             Err(de::Error::custom("Unexpected string"))
         }
     }
+    fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        self.visit_string(value.to_string())
+    }
 }
 
 impl<'de> Deserialize<'de> for PlayerState {
@@ -81,6 +87,41 @@ pub struct Response<T: Serialize> {
     data: T,
 }
 
+#[derive(Deserialize)]
+pub struct PlayFromUrl {
+    url: String,
+    state: PlayerState,
+}
+
+async fn play_from_url(data: web::Json<PlayFromUrl>) -> impl Responder {
+    let mpv = get_mpv();
+    let data = data.into_inner();
+    mpv.playlist_clear().unwrap();
+    mpv.playlist_add(
+        &data.url,
+        PlaylistAddTypeOptions::File,
+        PlaylistAddOptions::Append,
+    )
+    .unwrap();
+    
+    match mpv.playlist_play_id(0_usize) {
+        Ok(_) => {
+            match data.state {
+                PlayerState::Paused => mpv.pause().unwrap(),
+                _ => {}
+            };
+            HttpResponse::Ok().json(Response {
+                status: Status::Success,
+                data: "Playback started.",
+            })
+        }
+        Err(e) => HttpResponse::Ok().json(Response {
+            status: Status::Success,
+            data: PlayerState::Error(e.to_string()),
+        }),
+    }
+}
+
 async fn play_test() -> impl Responder {
     let mpv = get_mpv();
     mpv.playlist_clear().unwrap();
@@ -99,7 +140,7 @@ async fn pause() -> impl Responder {
         Err(e) => Err(PlayerState::Error(format!("{}", e))),
     };
     match play_state {
-        Ok(s) => {
+        Ok(_) => {
             mpv.pause().unwrap();
             HttpResponse::Ok().json(Response {
                 status: Status::Success,
@@ -123,7 +164,7 @@ async fn unpause() -> impl Responder {
         Err(e) => Err(PlayerState::Error(format!("{}", e))),
     };
     match play_state {
-        Ok(s) => {
+        Ok(_) => {
             mpv.set_property("pause", false).unwrap();
             HttpResponse::Ok().json(Response {
                 status: Status::Success,
@@ -168,6 +209,7 @@ async fn main() -> std::io::Result<()> {
             .route("/", web::get().to(play_test))
             .route("/pause", web::get().to(pause))
             .route("/unpause", web::get().to(unpause))
+            .route("/play", web::post().to(play_from_url))
     })
     .bind(("127.0.0.1", 8080))?
     .run()
