@@ -112,6 +112,30 @@ async fn pause() -> impl Responder {
         }),
     }
 }
+
+async fn unpause() -> impl Responder {
+    let mpv = get_mpv();
+    let play_state = match mpv.get_property::<bool>("pause") {
+        Ok(s) => match s {
+            true => Ok(PlayerState::Paused),
+            false => Err(PlayerState::Playing),
+        },
+        Err(e) => Err(PlayerState::Error(format!("{}", e))),
+    };
+    match play_state {
+        Ok(s) => {
+            mpv.set_property("pause", false).unwrap();
+            HttpResponse::Ok().json(Response {
+                status: Status::Success,
+                data: "Playback resumed.",
+            })
+        }
+        Err(e) => HttpResponse::Ok().json(Response {
+            status: Status::Error,
+            data: e,
+        }),
+    }
+}
 fn spawn_mpv() {
     match std::process::Command::new("mpv")
         .args(&[
@@ -142,7 +166,8 @@ async fn main() -> std::io::Result<()> {
     HttpServer::new(move || {
         App::new()
             .route("/", web::get().to(play_test))
-            .route("/test", web::get().to(pause))
+            .route("/pause", web::get().to(pause))
+            .route("/unpause", web::get().to(unpause))
     })
     .bind(("127.0.0.1", 8080))?
     .run()
