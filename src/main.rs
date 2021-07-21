@@ -122,12 +122,46 @@ async fn play_from_url(data: web::Json<PlayFromUrl>) -> impl Responder {
     }
 }
 
-async fn play_test() -> impl Responder {
-    let mpv = get_mpv();
-    mpv.playlist_clear().unwrap();
-    mpv.playlist_add("http://rem.lan/1qweww45//home/pi/drives/X/Animu/Air%20(2005)%20%5BDoki%5D%5B1280x720%20Hi10P%20BD%20FLAC%5D/%5BDoki%5D%20Air%20-%2002%20(1280x720%20Hi10P%20BD%20FLAC)%20%5BFEECD6B6%5D.mkv", PlaylistAddTypeOptions::File, PlaylistAddOptions::Append).unwrap();
-    mpv.playlist_play_id(0_usize).unwrap();
-    "Video playback should've started."
+async fn index() -> impl Responder {
+
+    let content = " 
+    <!DOCTYPE html>
+    <html lang='en'>
+    
+    <head>
+        <title>MPV Controller</title>
+    </head>
+    
+    <body>
+        <form onsubmit='play_url(event)'>
+            <input type='text' id='url' placeholder='File url' value='' /><br>
+            Start paused: <input type='checkbox' name='Start paused' id='paused'><br>
+            <input type='submit' value='Play'>
+        </form>
+        <button onclick='unpause()'>Unpause</button>
+        <button onclick='pause()'>Pause</button>
+    
+        <script>
+            function unpause() {
+                fetch('/unpause');
+            }
+            function pause() {
+                fetch('/pause');
+            }
+            function play_url(e) {
+                e.preventDefault();
+                let url = document.getElementById('url').value;
+                let paused = document.getElementById('paused').checked ? 'paused' : 'playing';
+    
+                fetch('/play', { method: 'POST', body: JSON.stringify({ url: url, state: paused }), headers: { 'Content-Type': 'application/json' } });
+    
+            }
+        </script>
+    </body>
+    
+    </html>
+    ";
+HttpResponse::Ok().body(content)
 }
 
 async fn pause() -> impl Responder {
@@ -206,12 +240,12 @@ fn get_mpv() -> Mpv {
 async fn main() -> std::io::Result<()> {
     HttpServer::new(move || {
         App::new()
-            .route("/", web::get().to(play_test))
+            .route("/", web::get().to(index))
             .route("/pause", web::get().to(pause))
             .route("/unpause", web::get().to(unpause))
             .route("/play", web::post().to(play_from_url))
     })
-    .bind(("127.0.0.1", 8080))?
+    .bind(("0.0.0.0", 8080))?
     .run()
     .await
 }
